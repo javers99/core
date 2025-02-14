@@ -5,7 +5,7 @@ import logging
 from aiortm import AioRTMClient, AioRTMError, AuthError
 
 from homeassistant.const import CONF_ID, CONF_NAME, STATE_OK
-from homeassistant.core import ServiceCall
+from homeassistant.core import ServiceCall, callback
 from homeassistant.helpers.entity import Entity
 
 from .storage import RememberTheMilkConfiguration
@@ -21,6 +21,7 @@ class RememberTheMilk(Entity):
         *,
         name: str,
         client: AioRTMClient,
+        config_entry_id: str,
         storage: RememberTheMilkConfiguration,
         token_valid: bool,
     ) -> None:
@@ -28,6 +29,7 @@ class RememberTheMilk(Entity):
         self._name = name
         self._rtm_config = storage
         self._client = client
+        self._config_entry_id = config_entry_id
         self._token_valid = token_valid
 
     async def create_task(self, call: ServiceCall) -> None:
@@ -87,7 +89,7 @@ class RememberTheMilk(Entity):
                 self._name,
                 err,
             )
-            self._token_valid = False
+            self._handle_token(False)
         except AioRTMError as err:
             _LOGGER.error(
                 "Error creating new Remember The Milk task for account %s: %s",
@@ -133,7 +135,7 @@ class RememberTheMilk(Entity):
                 self._name,
                 err,
             )
-            self._token_valid = False
+            self._handle_token(False)
         except AioRTMError as err:
             _LOGGER.error(
                 "Error completing task with id %s for account %s: %s",
@@ -153,3 +155,11 @@ class RememberTheMilk(Entity):
         if not self._token_valid:
             return "API token invalid"
         return STATE_OK
+
+    @callback
+    def _handle_token(self, token_valid: bool) -> None:
+        self._token_valid = token_valid
+        self.async_write_ha_state()
+        self.hass.async_create_task(
+            self.hass.config_entries.async_reload(self._config_entry_id)
+        )

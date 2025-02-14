@@ -3,19 +3,17 @@
 from __future__ import annotations
 
 import asyncio
-import logging
+from collections.abc import Mapping
 from typing import Any
 
 from aiortm import AioRTMClient, Auth, AuthError, ResponseError
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import SOURCE_REAUTH, ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_API_KEY, CONF_TOKEN, CONF_USERNAME
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import CONF_SHARED_SECRET, DOMAIN
-
-_LOGGER = logging.getLogger(__name__)
+from .const import CONF_SHARED_SECRET, DOMAIN, LOGGER
 
 TOKEN_TIMEOUT_SEC = 30
 
@@ -61,8 +59,8 @@ class RTMConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "invalid_auth"
             except ResponseError:
                 errors["base"] = "cannot_connect"
-            except Exception:  # pylint: disable=broad-except
-                _LOGGER.exception("Unexpected exception")
+            except Exception:  # noqa: BLE001 pylint: disable=broad-except
+                LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
             else:
                 return await self.async_step_auth()
@@ -94,22 +92,46 @@ class RTMConfigFlow(ConfigFlow, domain=DOMAIN):
             async with asyncio.timeout(TOKEN_TIMEOUT_SEC):
                 token = await self._client.rtm.api.get_token(self._frob)
         except TimeoutError:
-            return self.async_abort(reason="timeout")
+            return self.async_abort(reason="timeout_token")
         except AuthError:
             return self.async_abort(reason="invalid_auth")
         except ResponseError:
             return self.async_abort(reason="cannot_connect")
-        except Exception:  # pylint: disable=broad-except
-            _LOGGER.exception("Unexpected exception")
+        except Exception:  # noqa: BLE001 pylint: disable=broad-except
+            LOGGER.exception("Unexpected exception")
             return self.async_abort(reason="unknown")
 
         await self.async_set_unique_id(token["user"]["id"])
+        data = {
+            **self._auth_data,
+            CONF_TOKEN: token["token"],
+            CONF_USERNAME: token["user"]["username"],
+        }
+        if self.source == SOURCE_REAUTH:
+            self._abort_if_unique_id_mismatch()
+            return self.async_update_reload_and_abort(
+                self._get_reauth_entry(),
+                data_updates=data,
+            )
         self._abort_if_unique_id_configured()
         return self.async_create_entry(
             title=token["user"]["fullname"],
-            data={
-                **self._auth_data,
-                CONF_TOKEN: token["token"],
-                CONF_USERNAME: token["user"]["username"],
-            },
+            data=data,
         )
+
+    async def async_step_reauth(
+        self, entry_data: Mapping[str, Any]
+    ) -> ConfigFlowResult:
+        """Perform reauth upon an API authentication error."""
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Dialog that informs the user that reauth is required."""
+        if user_input is None:
+            return self.async_show_form(
+                step_id="reauth_confirm",
+                data_schema=vol.Schema({}),
+            )
+        return await self.async_step_user()

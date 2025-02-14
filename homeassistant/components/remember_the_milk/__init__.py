@@ -88,12 +88,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not await client.rtm.api.check_token():
         token_valid = False
 
+    if entity_id := hass.data[DOMAIN].get(DATA_ENTITY_ID):
+        await component.async_remove_entity(entity_id)
+
     entity = RememberTheMilk(
-        name=account_name, client=client, storage=storage, token_valid=token_valid
+        name=account_name,
+        client=client,
+        config_entry_id=entry.entry_id,
+        storage=storage,
+        token_valid=token_valid,
     )
     await component.async_add_entities([entity])
     hass.data[DOMAIN][DATA_ENTITY_ID] = entity.entity_id
 
+    # The services are registered here for now because they need the account name.
+    # The services will be deprecated when a todo platform is added.
     hass.services.async_register(
         DOMAIN,
         f"{account_name}_create_task",
