@@ -49,6 +49,8 @@ class RememberTheMilk(Entity):
                 _LOGGER.debug(
                     "Created new task '%s' in account %s", task_name, self.name
                 )
+                if hass_id is None:
+                    return
                 task_list = add_response.task_list
                 taskseries = task_list.taskseries[0]
                 await self.hass.async_add_executor_job(

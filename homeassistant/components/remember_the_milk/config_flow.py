@@ -1,4 +1,5 @@
 """Config flow for Remember The Milk integration."""
+
 from __future__ import annotations
 
 import asyncio
@@ -8,9 +9,8 @@ from typing import Any
 from aiortm import AioRTMClient, Auth, AuthError, ResponseError
 import voluptuous as vol
 
-from homeassistant import config_entries
+from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_API_KEY, CONF_TOKEN, CONF_USERNAME
-from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import CONF_SHARED_SECRET, DOMAIN
@@ -27,7 +27,7 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 )
 
 
-class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class RTMConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Remember The Milk."""
 
     VERSION = 1
@@ -41,7 +41,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle the initial step."""
         errors: dict[str, str] = {}
         if user_input is not None:
@@ -61,8 +61,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "invalid_auth"
             except ResponseError:
                 errors["base"] = "cannot_connect"
-            except Exception as err:  # pylint: disable=broad-except
-                _LOGGER.exception("Unexpected exception: %s", err)
+            except Exception:  # pylint: disable=broad-except
+                _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
             else:
                 return await self.async_step_auth()
@@ -73,7 +73,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_auth(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Authorize the application."""
         assert self._url is not None
         if user_input is not None:
@@ -85,7 +85,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_token(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Get token and create config entry."""
         assert self._client is not None
         assert self._frob is not None
@@ -93,14 +93,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         try:
             async with asyncio.timeout(TOKEN_TIMEOUT_SEC):
                 token = await self._client.rtm.api.get_token(self._frob)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return self.async_abort(reason="timeout")
         except AuthError:
             return self.async_abort(reason="invalid_auth")
         except ResponseError:
             return self.async_abort(reason="cannot_connect")
-        except Exception as err:  # pylint: disable=broad-except
-            _LOGGER.exception("Unexpected exception: %s", err)
+        except Exception:  # pylint: disable=broad-except
+            _LOGGER.exception("Unexpected exception")
             return self.async_abort(reason="unknown")
 
         await self.async_set_unique_id(token["user"]["id"])
