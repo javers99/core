@@ -7,5 +7,5 @@
   "iot_class": "cloud_push",
   "loggers": ["aiortm"],
   "quality_scale": "legacy",
-  "requirements": ["aiortm==0.8.1"]
+  "requirements": ["aiortm==0.9.45"]
 }
