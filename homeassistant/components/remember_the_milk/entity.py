@@ -2,7 +2,7 @@
 
 import logging
 
-from aiortm import AioRTMClient, AioRTMError
+from aiortm import AioRTMClient, AioRTMError, AuthError
 
 from homeassistant.const import CONF_ID, CONF_NAME, STATE_OK
 from homeassistant.core import ServiceCall
@@ -17,12 +17,18 @@ class RememberTheMilk(Entity):
     """Representation of an interface to Remember The Milk."""
 
     def __init__(
-        self, name: str, client: AioRTMClient, storage: RememberTheMilkConfiguration
+        self,
+        *,
+        name: str,
+        client: AioRTMClient,
+        storage: RememberTheMilkConfiguration,
+        token_valid: bool,
     ) -> None:
         """Create new instance of Remember The Milk component."""
         self._name = name
         self._rtm_config = storage
         self._client = client
+        self._token_valid = token_valid
 
     async def create_task(self, call: ServiceCall) -> None:
         """Create a new task on Remember The Milk.
@@ -75,11 +81,18 @@ class RememberTheMilk(Entity):
                     self.name,
                     task_name,
                 )
-        except AioRTMError as rtm_exception:
+        except AuthError as err:
+            _LOGGER.error(
+                "Invalid authentication when creating task for account %s: %s",
+                self._name,
+                err,
+            )
+            self._token_valid = False
+        except AioRTMError as err:
             _LOGGER.error(
                 "Error creating new Remember The Milk task for account %s: %s",
                 self._name,
-                rtm_exception,
+                err,
             )
 
     async def complete_task(self, call: ServiceCall) -> None:
@@ -113,11 +126,20 @@ class RememberTheMilk(Entity):
             _LOGGER.debug(
                 "Completed task with id %s in account %s", hass_id, self._name
             )
-        except AioRTMError as rtm_exception:
+        except AuthError as err:
             _LOGGER.error(
-                "Error creating new Remember The Milk task for account %s: %s",
+                "Invalid authentication when completing task with id %s for account %s: %s",
+                hass_id,
                 self._name,
-                rtm_exception,
+                err,
+            )
+            self._token_valid = False
+        except AioRTMError as err:
+            _LOGGER.error(
+                "Error completing task with id %s for account %s: %s",
+                hass_id,
+                self._name,
+                err,
             )
 
     @property
@@ -128,4 +150,6 @@ class RememberTheMilk(Entity):
     @property
     def state(self):
         """Return the state of the device."""
+        if not self._token_valid:
+            return "API token invalid"
         return STATE_OK

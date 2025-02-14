@@ -14,6 +14,7 @@ from homeassistant.const import (
     CONF_USERNAME,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity_component import EntityComponent
@@ -47,6 +48,7 @@ SERVICE_SCHEMA_CREATE_TASK = vol.Schema(
 SERVICE_SCHEMA_COMPLETE_TASK = vol.Schema({vol.Required(CONF_ID): cv.string})
 
 DATA_COMPONENT = "component"
+DATA_ENTITY_ID = "entity_id"
 DATA_STORAGE = "storage"
 
 
@@ -81,8 +83,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             permission="delete",
         )
     )
-    entity = RememberTheMilk(account_name, client, storage)
+
+    token_valid = True
+    if not await client.rtm.api.check_token():
+        token_valid = False
+
+    entity = RememberTheMilk(
+        name=account_name, client=client, storage=storage, token_valid=token_valid
+    )
     await component.async_add_entities([entity])
+    hass.data[DOMAIN][DATA_ENTITY_ID] = entity.entity_id
 
     hass.services.async_register(
         DOMAIN,
@@ -97,9 +107,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         schema=SERVICE_SCHEMA_COMPLETE_TASK,
     )
 
+    if not token_valid:
+        raise ConfigEntryAuthFailed
+
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    component: EntityComponent[RememberTheMilk] = hass.data[DOMAIN][DATA_COMPONENT]
+    await component.async_remove_entity(hass.data[DOMAIN][DATA_ENTITY_ID])
     return True
