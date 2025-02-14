@@ -6,7 +6,6 @@ import json
 import os
 from typing import Any
 
-from homeassistant.const import CONF_TOKEN
 from homeassistant.core import HomeAssistant
 
 from .const import CONF_ID_MAP, CONF_LIST_ID, CONF_TASK_ID, CONF_TIMESERIES_ID, LOGGER
@@ -44,26 +43,6 @@ class RememberTheMilkConfiguration:
         """Write the configuration to a file."""
         with open(self._config_file_path, "w", encoding="utf8") as config_file:
             json.dump(self._config, config_file)
-
-    def get_token(self, profile_name: str) -> str | None:
-        """Get the server token for a profile."""
-        if profile_name in self._config:
-            return self._config[profile_name][CONF_TOKEN]
-        return None
-
-    def set_token(self, profile_name: str, token: str) -> None:
-        """Store a new server token for a profile."""
-        self._initialize_profile(profile_name)
-        self._config[profile_name][CONF_TOKEN] = token
-        self.save_config()
-
-    def delete_token(self, profile_name: str) -> None:
-        """Delete a token for a profile.
-
-        Usually called when the token has expired.
-        """
-        self._config.pop(profile_name, None)
-        self.save_config()
 
     def _initialize_profile(self, profile_name: str) -> None:
         """Initialize the data structures for a profile."""
